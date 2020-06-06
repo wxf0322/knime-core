@@ -74,6 +74,7 @@ import org.knime.core.data.DataTable;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.data.DataType;
 import org.knime.core.data.IDataRepository;
+import org.knime.core.data.RowCursor;
 import org.knime.core.data.RowKey;
 import org.knime.core.data.container.BlobSupportDataRow;
 import org.knime.core.data.container.BufferedContainerTable;
@@ -349,6 +350,31 @@ public final class BufferedDataTable implements DataTable, PortObject {
     @Override
     public CloseableRowIterator iterator() {
         return m_delegate.iterator();
+    }
+
+    /**
+     * A new {@link RowCursor}.
+     *
+     * @return a new {@link RowCursor}.
+     *
+     * @apiNote Unstable and experimental API. Not to be used by clients.
+     * @since 4.2
+     */
+    public RowCursor cursor(){
+        return m_delegate.cursor();
+    }
+
+    /**
+     * A new {@link RowCursor} to access {@link BufferedDataTable}.
+     *
+     * @param filter a {@link TableFilter}.
+     * @return {@link RowCursor}.
+     *
+     * @apiNote Unstable and experimental API. Not to be used by clients.
+     * @since 4.2
+     */
+    public RowCursor cursor(final TableFilter filter) {
+        return m_delegate.cursor(filter);
     }
 
     /**
@@ -1009,6 +1035,26 @@ public final class BufferedDataTable implements DataTable, PortObject {
          * {@inheritDoc} */
         @Override
         public CloseableRowIterator iterator();
+
+        /**
+         * Mutable value iterator, i.e. returned object are mutable
+         *
+         * @return {@link RowCursor}
+         * @apiNote Must not to be called by clients. Experimental API.
+         * @since 4.2
+         */
+        RowCursor cursor();
+
+        /**
+         * Mutable value iterator, i.e. returned object are mutable.
+         *
+         * @param filter
+         *
+         * @return {@link RowCursor}
+         * @apiNote Must not to be called by clients. Experimental API.
+         * @since 4.2
+         */
+        RowCursor cursor(final TableFilter filter);
 
         /**
          * Provides a {@link CloseableRowIterator} that is filtered according to a given {@link TableFilter}. The

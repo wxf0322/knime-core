@@ -52,6 +52,7 @@ import java.util.Optional;
 
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.RowCursor;
 import org.knime.core.data.RowKey;
 import org.knime.core.data.append.AppendedRowsTable;
 import org.knime.core.data.append.AppendedRowsTable.DuplicatePolicy;
@@ -182,6 +183,31 @@ public final class ConcatenateTable implements KnowsRowCountTable {
         } else {
             return m_tablesWrapper.iterator(null, -1);
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor() {
+        // TODO
+        // Problems of a "fast" implementation.
+        // -- we have to guarantee that at each position of RowCursor we return the same instance per column
+        // -- we can only guarantee this per row cursor. how to wrap?
+        // -- what about mixed types?
+        // -- how to no screw up performance in case of 'FastTable's?
+
+        // default with slow performance in case of fast tables (cells are created in case of `iterator()` :-()
+        return new FallbackRowCursor(iterator(), getDataTableSpec());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor(final TableFilter filter) {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iteratorWithFilter(filter), getDataTableSpec());
     }
 
     @Override

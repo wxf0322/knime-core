@@ -53,6 +53,7 @@ import java.util.zip.ZipOutputStream;
 
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.data.IDataRepository;
+import org.knime.core.data.RowCursor;
 import org.knime.core.data.container.filter.TableFilter;
 import org.knime.core.data.container.storage.TableStoreFormat;
 import org.knime.core.node.BufferedDataTable;
@@ -124,6 +125,24 @@ public final class BufferedContainerTable implements ContainerTable {
             return m_buffer.getTableSpec();
         }
         return m_spec;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor() {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iterator(), getDataTableSpec());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor(final TableFilter filter) {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iteratorWithFilter(filter), getDataTableSpec());
     }
 
     /**
@@ -337,5 +356,4 @@ public final class BufferedContainerTable implements ContainerTable {
             m_readTask = null;
         }
     }
-
 }

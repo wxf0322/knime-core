@@ -54,6 +54,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.RowCursor;
 import org.knime.core.data.RowKey;
 import org.knime.core.data.container.filter.TableFilter;
 import org.knime.core.node.BufferedDataTable;
@@ -205,6 +206,24 @@ public final class JoinedTable implements KnowsRowCountTable {
      * {@inheritDoc}
      */
     @Override
+    public RowCursor cursor() {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iterator(), getDataTableSpec());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor(final TableFilter filter) {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iteratorWithFilter(filter), getDataTableSpec());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public boolean removeFromTableRepository(final WorkflowDataRepository dataRepository) {
         return false;
     }
@@ -290,6 +309,4 @@ public final class JoinedTable implements KnowsRowCountTable {
             return new JoinedTable(left, right, joinSpec);
         }
     }
-
-
 }

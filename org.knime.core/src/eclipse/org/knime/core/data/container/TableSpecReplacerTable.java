@@ -56,6 +56,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.RowCursor;
 import org.knime.core.data.container.filter.TableFilter;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.BufferedDataTable.KnowsRowCountTable;
@@ -208,6 +209,27 @@ public final class TableSpecReplacerTable implements KnowsRowCountTable {
         return m_reference.iterator();
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor() {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iterator(), getDataTableSpec());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor(final TableFilter filter) {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iteratorWithFilter(filter), getDataTableSpec());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public CloseableRowIterator iteratorWithFilter(final TableFilter filter, final ExecutionMonitor exec) {
         return m_reference.filter(filter, exec).iterator();

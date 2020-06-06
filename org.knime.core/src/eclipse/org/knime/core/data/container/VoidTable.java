@@ -52,6 +52,7 @@ import java.io.IOException;
 
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.RowCursor;
 import org.knime.core.data.container.filter.TableFilter;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.BufferedDataTable.KnowsRowCountTable;
@@ -93,6 +94,24 @@ public final class VoidTable implements KnowsRowCountTable {
     @Override
     public DataTableSpec getDataTableSpec() {
         return m_spec;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor() {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iterator(), getDataTableSpec());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RowCursor cursor(final TableFilter filter) {
+        // TODO efficient impl.
+        return new FallbackRowCursor(iteratorWithFilter(filter), getDataTableSpec());
     }
 
     /**

@@ -126,6 +126,7 @@ public class JoinSpecification {
             /** Output rows may be provided in any order. */
             ARBITRARY("Arbitrary output order (may vary randomly)"),
             /** Identical input tables and identical join specification must give identical output. */
+            // TODO: not used yet. remove?
             DETERMINISTIC("Fast sort (use any table to determine output order)"),
             /**
              * Rows are output in three blocks:
@@ -159,6 +160,7 @@ public class JoinSpecification {
     /**
      * See {@link Builder#conjunctive(boolean)}
      */
+    // TODO: not used yet. remove?
     private final boolean m_conjunctive;
 
     /**
@@ -190,6 +192,7 @@ public class JoinSpecification {
      * Contains the offsets of the columns in the left and right table to include if join columns are merged. Is null if
      * {@link #isMergeJoinColumns()} is false.
      */
+    // TODO: example
     private final int[][] m_mergeIncludes = new int[2][];
 
     /**
@@ -198,11 +201,13 @@ public class JoinSpecification {
      * explicitly (even if the left column is not explicitly included). This is used when creating output table specs in
      * {@link #specForMergedMatchTable()}.
      */
+    // TODO: example; is this really needed or is the information redundant with m_mergeIncludes?
     private final Predicate<String> m_includedViaMerge;
 
     /**
      * See {@link #columnLeftMergedLocations()}
      */
+    // TODO: example
     private final int[][] m_columnLeftMergedLocations;
 
     private JoinSpecification(final Builder builder) {
@@ -257,6 +262,7 @@ public class JoinSpecification {
     private DataTableSpec specForNormalMatchTable() {
 
         // add all included columns from the left table to the output spec
+        // TODO: LinkedHashSet (contains...)
         final List<String> resultColumnNames = new ArrayList<>(getSettings(InputTable.LEFT).getIncludeColumnNames());
         // resolve names to column specifications
         final List<DataColumnSpec> resultColumns = resultColumnNames.stream()
@@ -358,6 +364,7 @@ public class JoinSpecification {
      * @return a {@link JoinSpecification} with identical settings except applied to different tables.
      * @throws InvalidSettingsException
      */
+    // TODO: not used yet. remove?
     JoinSpecification specWith(final JoinTableSettings joinTable, final JoinTableSettings joinTable2) {
         JoinTableSettings left = joinTable.getSide().isLeft() ? joinTable : joinTable2;
         JoinTableSettings right = joinTable.getSide().isLeft() ? joinTable2 : joinTable;
@@ -378,9 +385,12 @@ public class JoinSpecification {
         // detect if the disambiguator fails and fix by concatenating its answer to the previous name instead of using it
         while (isAmbiguous.test(disambiguated)) {
             // DataColumnSpec.setName(name) will trim the given name, so appending spaces won't help
+            // TODO: instead of trim(), build new DCSpec
             String effectiveColumnName = disambiguator.apply(disambiguated).trim();
             boolean faultyDisambiguator = disambiguated.equals(effectiveColumnName);
-            disambiguated = faultyDisambiguator ? disambiguated.concat(disambiguated) : disambiguator.apply(disambiguated);
+            // TODO: only append a single character (underscore)
+            disambiguated =
+                faultyDisambiguator ? disambiguated.concat(disambiguated) : disambiguator.apply(disambiguated);
         }
         return disambiguated;
 
@@ -452,6 +462,7 @@ public class JoinSpecification {
      * @return column names Y from the other table for which X=Y is in the join conditions
      */
     Stream<String> columnJoinPartners(final InputTable table, final String colName) {
+        // TODO: don't use ordinal
         List<JoinColumn> joinClauses = m_settings[table.ordinal()].getJoinClauses();
         List<JoinColumn> otherJoinClauses = m_settings[table.other().ordinal()].getJoinClauses();
 
@@ -567,6 +578,7 @@ public class JoinSpecification {
         //        System.out.println(Arrays.toString(leftIncludes));
         //        System.out.println(Arrays.toString(rightIncludes));
 
+        // TODO: BlobSupportDataRow?
         return new DefaultRow(m_rowKeyFactory.apply(left, right), dataCells);
     }
 

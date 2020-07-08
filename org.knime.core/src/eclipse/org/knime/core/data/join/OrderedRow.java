@@ -77,7 +77,6 @@ import org.knime.core.data.join.results.LeftRightSorted;
  * @author Carl Witt, KNIME AG, Zurich, Switzerland
  * @since 4.2
  */
-@SuppressWarnings("javadoc")
 public final class OrderedRow { // implements DataRow, Comparable<OrderedRow>
 
     /**
@@ -119,15 +118,14 @@ public final class OrderedRow { // implements DataRow, Comparable<OrderedRow>
      * @return
      */
     public static DataRow withOffset(final DataRow row, final long rowOffset) {
+        // TODO: use AppendedColumnRow instead
         DataCell[] cells = new DataCell[row.getNumCells() + 1];
         int cell = 0;
         // add long row in the correct position
-        cells[cell] = new LongCell(rowOffset);
-        cell++;
+        cells[cell++] = new LongCell(rowOffset);
         // copy row contents
         for (int i = 0; i < row.getNumCells(); i++) {
-            cells[cell] = row.getCell(i);
-            cell++;
+            cells[cell++] = row.getCell(i);
         }
         return new DefaultRow(row.getKey(), cells);
     }
@@ -161,6 +159,8 @@ public final class OrderedRow { // implements DataRow, Comparable<OrderedRow>
      * @return the data row without the offset information
      */
     static DataRow removeOffset(final DataRow row) {
+        // while we are copying a lot of cells here and it might look appealing to use something like a FilterColumnRow
+        // instead, this approach allows the GC to collect the no-longer-needed offset cells
         DataCell[] cells = new DataCell[row.getNumCells() - 1];
         for (int i = 1; i < row.getNumCells(); i++) {
             cells[i - 1] = row.getCell(i);
@@ -180,6 +180,7 @@ public final class OrderedRow { // implements DataRow, Comparable<OrderedRow>
      *         offset
      * @see JoinTableSettings#condensed(DataRow, long, boolean)
      */
+    // TODO: no longer needed. remove?
     static DataRow materialize(final JoinTableSettings joinTable, final DataRow row, final long rowOffset,
         final boolean storeOffset) {
 

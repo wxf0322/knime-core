@@ -61,6 +61,7 @@ import org.knime.core.node.InvalidSettingsException;
  * @since 4.2
  *
  */
+// TODO: remove or make useful
 final class CostModelFactory implements JoinerFactory {
 
     private CostModelFactory() {}

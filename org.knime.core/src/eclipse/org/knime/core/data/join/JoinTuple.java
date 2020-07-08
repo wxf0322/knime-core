@@ -112,6 +112,7 @@ final class JoinTuple {
      * @param cells the join column values (as extracted by {@link #get(JoinTableSettings, DataRow)}).
      * @return a hash code such that two join tuples with identical values will have the same hash code
      */
+    // TODO: not used yet. remove?
     static int conjunctiveHashCode(final DataCell[] cells) {
         return Arrays.hashCode(cells);
     }
@@ -122,6 +123,7 @@ final class JoinTuple {
      * @return a hash code such that two join tuples with identical values in the i-th clause will have the same hash
      *         code.
      */
+    // TODO: not used yet. remove?
     static int disjunctiveHashCode(final DataCell[] cells, final int i) {
         return cells[i].hashCode();
     }
@@ -140,12 +142,12 @@ final class JoinTuple {
 
             @Override
             public boolean equals(final DataCell[] o1, final DataCell[] o2) {
+                // o1 and o2 will never be null and always have the same length
                 for (int i = 0; i < o1.length; i++) {
-
                     if (o1[i].isMissing() || o2[i].isMissing()) {
                         return false;
                     }
-                    // compare the data cells
+                    // compare the data cells; this is fairly expensive...
                     if (!o1[i].equals(o2[i])) {
                         return false;
                     }
@@ -159,6 +161,7 @@ final class JoinTuple {
      * @param i compare rows by looking at the i-th conjunction in the disjunctive normal form defining the join clauses
      * @return strategy that maps rows to the same bucket if they have the same values in the i-th conjunctive clause
      */
+    // TODO: not used yet. remove?
     @SuppressWarnings("serial")
     static HashingStrategy<DataCell[]> hashDisjunctiveClause(final int i) {
 

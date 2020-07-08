@@ -215,7 +215,7 @@ public final class LeftRightSorted {
          * To make sure the left outer matches are listed at the bottom (for legacy compatibility), we force them to be
          * larger than all left offsets by reserving another 1G offsets for the left outer matches.
          *
-         * Say we have an unigned 8 bit number and want to combine a left and a right unsigned 4 bit number such that
+         * Say we have an unsigned 8 bit number and want to combine a left and a right unsigned 4 bit number such that
          * when sorting by the combined number the left order dominates. What we can do:
          * <ol>
          * <li>reserve the highest order bit to get the outer matches past the matches. It can be set by
@@ -231,6 +231,10 @@ public final class LeftRightSorted {
          * {@link LeftRightSorted#COMPARE_COMBINED_OFFSETS}.
          *
          */
+        // TODO: this documentation should be improved / updated
+        // TODO: this is probably not the best place for this todo, but here is one of several places in the code where
+        // we get into trouble with large tables (more than Integer.MAX_VALUE rows). How do we deal with those? At the
+        // very least, we should check sizes in the node model and disallow large tables.
         private static final long OUTER_ROW_BIT = 0b1000000000000000000000000000000000000000000000000000000000000000L;
 
         private static final long RIGHT_OUTER_BITS =

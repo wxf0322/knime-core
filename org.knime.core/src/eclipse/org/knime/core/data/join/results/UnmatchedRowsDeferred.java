@@ -81,7 +81,7 @@ class UnmatchedRowsDeferred implements UnmatchedRows {
      * The i-th bit is set if the i-th row in the probe input was matched to a row in a partial hash index at least
      * once, e.g., during a {@link BlockHashJoin#singlePass(BufferedDataTable, HashIndex)}.
      */
-    private final BitSet m_wasMatched = new BitSet();
+    private final BitSet m_wasMatched;
 
     private final CancelChecker m_checkCanceled;
 
@@ -89,6 +89,8 @@ class UnmatchedRowsDeferred implements UnmatchedRows {
 
     private final BufferedDataTable m_probeInput;
 
+    // TODO: use HashMap instead; we do not need the sorting, since that is taken care of in LeftRightSorted
+    // will have to deprecate the node for this change though
     private TreeMap<Long, DataRow> m_candidates = new TreeMap<>();
 
     /**
@@ -99,6 +101,7 @@ class UnmatchedRowsDeferred implements UnmatchedRows {
      */
     UnmatchedRowsDeferred(final BufferedDataTable probeInput, final RowHandler unmatched,
         final CancelChecker checkCanceled) {
+        m_wasMatched = new BitSet((int)probeInput.size());
         m_probeInput = probeInput;
         m_unmatched = unmatched;
         m_checkCanceled = checkCanceled;
@@ -125,10 +128,10 @@ class UnmatchedRowsDeferred implements UnmatchedRows {
     public void unmatched(final DataRow unmatchedProbeRow, final long unmatchedProbeRowOffset) {
         if (m_candidates != null) {
             // if the row was matched before, it was removed from the data structure afterwards
-            boolean previouslyRemoved = m_wasMatched.get(((int)unmatchedProbeRowOffset));
+            boolean previouslyMatched = m_wasMatched.get(((int)unmatchedProbeRowOffset));
             // don't put the row in the data structure another time
-            if (!previouslyRemoved) {
-                // TODO the candidate can be put in the map twice, but shouldn't be a problem
+            if (!previouslyMatched) {
+                // the candidate can be put in the map multiple times
                 m_candidates.put(unmatchedProbeRowOffset, unmatchedProbeRow);
             }
         }

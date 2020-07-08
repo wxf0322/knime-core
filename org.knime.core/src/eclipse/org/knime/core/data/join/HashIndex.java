@@ -87,7 +87,7 @@ class HashIndex {
     private static final Function<DataCell[], List<DataRow>> newRowList = k -> new ArrayList<DataRow>();
 
     /** Puts the join results here. */
-    final JoinResult m_joinContainer;
+    final JoinResult<?> m_joinContainer;
 
     /**
      * The hash rows in order of their addition to the index (which is hash input row order). <br/>
@@ -99,6 +99,7 @@ class HashIndex {
     /**
      * The offset of the i-th data row in {@link #m_rows}.
      */
+    // TODO: int should be sufficient, since the node does not support long tables yet
     private final TLongArrayList m_rowOffsets = new TLongArrayList();
 
     /**
@@ -106,12 +107,14 @@ class HashIndex {
      * index is needed. The number of indexes is 1 if the join is conjunctive {@link JoinSpecification#isConjunctive()},
      * or disjunctive with a single conjunctive clause (i.e., user selects match any with a single column pair A=X).
      */
+    // TODO: outer List not used yet. remove?
     private final List<TCustomHashMap<DataCell[], List<DataRow>>> m_indexes;
 
     /**
      * Whether to remember which hash rows have had join partners in the probe table to be able to output unmatched hash
      * rows.
      */
+    // TODO: this and the BitSet are only required for outer joins
     private final boolean m_trackMatchedHashRows;
 
     /**
@@ -139,9 +142,15 @@ class HashIndex {
      */
     private final CancelChecker m_checkCanceled;
 
+    /**
+     * disjunctive join predicates require duplicate elimination across the m_indexes. this is used for merging the
+     * results from every index by eliminating duplicates and sorting the result rows according to the order they were
+     * inserted (by calling addHashRow on this object)
+     */
+    // TODO: not used yet. remove?
     private final Comparator<DataRow> m_compareByRowOffset;
 
-    private InputTable m_hashSide;
+    private final InputTable m_hashSide;
 
     /**
      *
@@ -166,7 +175,7 @@ class HashIndex {
      *            {@link #joinSingleRow(DataRow, long)}
      */
     @SuppressWarnings("serial")
-    HashIndex(final JoinSpecification joinSpecification, final JoinResult joinContainer,
+    HashIndex(final JoinSpecification joinSpecification, final JoinResult<?> joinContainer,
         final JoinSpecification.InputTable hashSide, final CancelChecker checkCanceled) {
 
         m_joinSpecification = joinSpecification;
@@ -181,8 +190,15 @@ class HashIndex {
 
         // row offsets and unmatched rows
         m_hashrowInternalOffsets = new TObjectIntCustomHashMap<>(new HashingStrategy<DataRow>() {
-            @Override public int computeHashCode(final DataRow object) { return object.getKey().hashCode(); }
-            @Override public boolean equals(final DataRow o1, final DataRow o2) { return o1 == o2; }
+            @Override
+            public int computeHashCode(final DataRow row) {
+                return row.getKey().hashCode();
+            }
+
+            @Override
+            public boolean equals(final DataRow o1, final DataRow o2) {
+                return o1 == o2;
+            }
         });
         m_matched = m_trackMatchedHashRows ? new BitSet() : null;
 
@@ -198,9 +214,6 @@ class HashIndex {
             }
         }
 
-        // disjunctive join predicates require duplicate elimination across the m_indexes.
-        // this is used for merging the results from every index by eliminating duplicates and sorting the result rows
-        // according to the order they were inserted (by calling addHashRow on this object)
         m_compareByRowOffset = (hashRow1, hashRow2) -> {
             long hashRow1Offset = m_rowOffsets.get(m_hashrowInternalOffsets.get(hashRow1));
             long hashRow2Offset = m_rowOffsets.get(m_hashrowInternalOffsets.get(hashRow2));
@@ -243,8 +256,7 @@ class HashIndex {
             m_joinContainer.unmatched(m_hashSide).accept(row, offset);
         } else {
             if (m_joinSpecification.isConjunctive()) {
-                List<DataRow> rowList = m_indexes.get(0).computeIfAbsent(joinTuple, newRowList);
-                rowList.add(row);
+                m_indexes.get(0).computeIfAbsent(joinTuple, newRowList).add(row);
             } else {
                 // add the row to every clause index
                 for (int clause = 0; clause < m_indexes.size(); clause++) {
@@ -291,17 +303,18 @@ class HashIndex {
                 }
 
                 // retrieve the offset of the hash row in the hash input table
-                long hashRowOrder = m_rowOffsets.get(internalOffset);
+                long hashRowOffset = m_rowOffsets.get(internalOffset);
 
                 // even if we don't retain matches, we can't skip this since the join container may needs to cancel
                 // the unmatched status of a probe row
-                DataRow left = m_probeSettings.getSide().isLeft() ? probeRow : hashRow;
-                DataRow right = m_probeSettings.getSide().isLeft() ? hashRow : probeRow;
+                boolean isLeft = m_probeSettings.getSide().isLeft();
+                DataRow left = isLeft ? probeRow : hashRow;
+                DataRow right = isLeft ? hashRow : probeRow;
 
-                long leftOrder = m_probeSettings.getSide().isLeft() ? probeRowOffset : hashRowOrder;
-                long rightOrder = m_probeSettings.getSide().isLeft() ? hashRowOrder : probeRowOffset;
+                long leftOffset = isLeft ? probeRowOffset : hashRowOffset;
+                long rightOffset = isLeft ? hashRowOffset : probeRowOffset;
 
-                m_joinContainer.addMatch(left, leftOrder, right, rightOrder);
+                m_joinContainer.addMatch(left, leftOffset, right, rightOffset);
             }
         }
     }
@@ -327,6 +340,7 @@ class HashIndex {
      * @return null if none found. Otherwise, a list of matching rows in order of their insertion with
      *         {@link #addHashRow(JoinTuple, DataRow, long)}.
      */
+    // TODO: not used yet. remove?
     private List<DataRow> matchDisjunctive(final DataRow probeRow) {
 
         TreeSet<DataRow> matches = new TreeSet<>(m_compareByRowOffset);

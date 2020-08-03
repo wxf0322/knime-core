@@ -51,6 +51,7 @@ package org.knime.core.data;
 /**
  *
  * @author Christian Dietz, KNIME GmbH
+ * @since 4.3
  */
 public interface RowCursor extends AutoCloseable {
 

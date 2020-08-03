@@ -358,7 +358,7 @@ public final class BufferedDataTable implements DataTable, PortObject {
      * @return a new {@link RowCursor}.
      *
      * @apiNote Unstable and experimental API. Not to be used by clients.
-     * @since 4.2
+     * @since 4.3
      */
     public RowCursor cursor(){
         return m_delegate.cursor();
@@ -371,7 +371,7 @@ public final class BufferedDataTable implements DataTable, PortObject {
      * @return {@link RowCursor}.
      *
      * @apiNote Unstable and experimental API. Not to be used by clients.
-     * @since 4.2
+     * @since 4.3
      */
     public RowCursor cursor(final TableFilter filter) {
         return m_delegate.cursor(filter);
@@ -1041,7 +1041,7 @@ public final class BufferedDataTable implements DataTable, PortObject {
          *
          * @return {@link RowCursor}
          * @apiNote Must not to be called by clients. Experimental API.
-         * @since 4.2
+         * @since 4.3
          */
         RowCursor cursor();
 
@@ -1052,7 +1052,7 @@ public final class BufferedDataTable implements DataTable, PortObject {
          *
          * @return {@link RowCursor}
          * @apiNote Must not to be called by clients. Experimental API.
-         * @since 4.2
+         * @since 4.3
          */
         RowCursor cursor(final TableFilter filter);
 

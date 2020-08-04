@@ -52,10 +52,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.eclipse.swt.custom.ST;
 import org.knime.core.node.NodeLogger;
 
 /**
@@ -64,32 +66,30 @@ import org.knime.core.node.NodeLogger;
  * Common code for registries which manage {@link ConverterFactory converter factories}.
  *
  * @author Jonathan Hale
- * @param <ST> Type of source types
- * @param <DT> Type of dest types
- * @param <ConverterFactoryType> Type of converter factory to be registered here
- * @param <RegistryImpl> Implementing class, used for proper method chaining
+ * @param <DT> Type description of the destination
+ * @param <CF> Type of converter factory to be registered here
  * @since 3.6
  */
-public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryType extends ConverterFactory<ST, DT>, RegistryImpl extends AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryType, RegistryImpl>> {
+public abstract class AbstractConverterFactoryRegistry<DT, CF extends ConverterFactory<?, DT>> {
 
-    private final static NodeLogger LOGGER = NodeLogger.getLogger(AbstractConverterFactoryRegistry.class);
+    private static final NodeLogger LOGGER = NodeLogger.getLogger(AbstractConverterFactoryRegistry.class);
 
     /** Converter factories stored by SourceType/DestType/FactoryName triple */
-    protected final HashMap<ConversionKey, ArrayList<ConverterFactoryType>> m_factories = new HashMap<>();
+    protected final Map<ConversionKey, ArrayList<CF>> m_factories = new HashMap<>();
 
     /** Factories stored by destination type */
-    protected final HashMap<DT, Set<ConverterFactoryType>> m_byDestinationType = new HashMap<>();
+    protected final Map<DT, Set<CF>> m_byDestinationType = new HashMap<>();
 
     /** Factories stored by source type */
-    protected final HashMap<ST, Set<ConverterFactoryType>> m_bySourceType = new HashMap<>();
+    protected final Map<ST, Set<CF>> m_bySourceType = new HashMap<>();
 
     /** Factories stored by identifier */
-    protected final HashMap<String, ConverterFactoryType> m_byIdentifier = new HashMap<>();
+    protected final Map<String, CF> m_byIdentifier = new HashMap<>();
 
     /**
      * Parent of this registry. If a converter factory is not found in the registry, this registry will be queried next.
      */
-    protected RegistryImpl m_parent = null;
+    protected AbstractConverterFactoryRegistry<DT, CF> m_parent = null;
 
     /**
      * Get all registered converter factories.
@@ -97,8 +97,8 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
      * @return Collection of registered converter factories.
      * @since 3.3
      */
-    public Collection<ConverterFactoryType> getAllConverterFactories() {
-        final Set<ConverterFactoryType> factories =
+    public Collection<CF> getAllConverterFactories() {
+        final Set<CF> factories =
             m_factories.values().stream().flatMap(factoryList -> factoryList.stream()).collect(Collectors.toSet());
         if (m_parent != null) {
             factories.addAll(m_parent.getAllConverterFactories());
@@ -140,13 +140,13 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
      * @param factory the factory to register
      * @return self (for method chaining)
      */
-    public RegistryImpl register(final ConverterFactoryType factory) {
+    public AbstractConverterFactoryRegistry<DT, CF> register(final CF factory) {
         if (factory == null) {
             throw new IllegalArgumentException("factory must not be null");
         }
 
         final ConversionKey key = new ConversionKey(factory);
-        ArrayList<ConverterFactoryType> list = m_factories.get(key);
+        ArrayList<CF> list = m_factories.get(key);
         if (list == null) {
             list = new ArrayList<>();
             m_factories.put(key, list);
@@ -154,7 +154,7 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
         list.add(factory);
 
         final DT destType = factory.getDestinationType();
-        Set<ConverterFactoryType> byDestType = m_byDestinationType.get(destType);
+        Set<CF> byDestType = m_byDestinationType.get(destType);
         if (byDestType == null) {
             byDestType = new LinkedHashSet<>();
             m_byDestinationType.put(destType, byDestType);
@@ -162,19 +162,19 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
         byDestType.add(factory);
 
         final ST sourceType = factory.getSourceType();
-        Set<ConverterFactoryType> bySourceType = m_bySourceType.get(sourceType);
+        Set<CF> bySourceType = m_bySourceType.get(sourceType);
         if (bySourceType == null) {
             bySourceType = new LinkedHashSet<>();
             m_bySourceType.put(sourceType, bySourceType);
         }
         bySourceType.add(factory);
 
-        final ConverterFactoryType previous = m_byIdentifier.put(factory.getIdentifier(), factory);
+        final CF previous = m_byIdentifier.put(factory.getIdentifier(), factory);
         if (previous != null) {
             LOGGER.coding("Factory identifier is not unique (" + factory.getIdentifier() + ")");
         }
 
-        return (RegistryImpl)this;
+        return this;
     }
 
     /**
@@ -183,12 +183,12 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
      * @param id unique identifier for the factory
      * @return an optional converter factory
      */
-    public Optional<ConverterFactoryType> getFactory(final String id) {
+    public Optional<CF> getFactory(final String id) {
         if (id == null) {
             return Optional.empty();
         }
 
-        final ConverterFactoryType factory = m_byIdentifier.get(id);
+        final CF factory = m_byIdentifier.get(id);
 
         if (factory == null) {
             return m_parent != null ? m_parent.getFactory(id) : Optional.empty();
@@ -204,10 +204,10 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
      * @return a {@link Collection} of all possible source types which can be converted into the given
      *         <code>destType</code>. The first is always the preferred type.
      */
-    public Collection<ConverterFactoryType> getFactoriesForDestinationType(final DT destType) {
-        final LinkedHashSet<ConverterFactoryType> set = new LinkedHashSet<>();
+    public Collection<CF> getFactoriesForDestinationType(final DT destType) {
+        final LinkedHashSet<CF> set = new LinkedHashSet<>();
 
-        final Set<ConverterFactoryType> types = m_byDestinationType.get(destType);
+        final Set<CF> types = m_byDestinationType.get(destType);
         if (types != null) {
             set.addAll(types);
         }
@@ -226,10 +226,10 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
      * @return a {@link Collection} of all possible source types which can be converted into the given
      *         <code>destType</code>. The first is always the preferred type.
      */
-    public Collection<ConverterFactoryType> getFactoriesForSourceType(final ST sourceType) {
-        final LinkedHashSet<ConverterFactoryType> set = new LinkedHashSet<>();
+    public Collection<CF> getFactoriesForSourceType(final ST sourceType) {
+        final LinkedHashSet<CF> set = new LinkedHashSet<>();
 
-        final Set<ConverterFactoryType> types = m_bySourceType.get(sourceType);
+        final Set<CF> types = m_bySourceType.get(sourceType);
         if (types != null) {
             set.addAll(types);
         }
@@ -252,10 +252,10 @@ public abstract class AbstractConverterFactoryRegistry<ST, DT, ConverterFactoryT
      * @param destType Destination type to convert into
      * @return Collection of suitable converter factories
      */
-    public Collection<ConverterFactoryType> getFactories(final ST sourceType, final DT destType) {
-        final ArrayList<ConverterFactoryType> factories = new ArrayList<>();
+    public Collection<CF> getFactories(final ST sourceType, final DT destType) {
+        final ArrayList<CF> factories = new ArrayList<>();
 
-        final ArrayList<ConverterFactoryType> list = m_factories.get(new ConversionKey(sourceType, destType));
+        final ArrayList<CF> list = m_factories.get(new ConversionKey(sourceType, destType));
         if (list != null) {
             factories.addAll(list);
         }

@@ -164,10 +164,9 @@ public class MappingFramework {
      * @param <ET> External type
      * @param <D> Destination type
      */
-    public static <ET, D extends Destination<ET>> ConsumerRegistry<ET, D>
-        forDestinationType(final Class<? extends D> destinationType) {
+    public static <DT> ConsumerRegistry<DT> forDestinationType(final DT destinationType) {
 
-        final ConsumerRegistry<ET, D> perDT = getConsumerRegistry(destinationType);
+        final ConsumerRegistry<DT> perDT = getConsumerRegistry(destinationType);
         if (perDT == null) {
             return createConsumerRegistry(destinationType);
         }

@@ -66,14 +66,10 @@ import org.knime.core.data.convert.java.DataCellToJavaConverterRegistry;
  * @param <ET> External type
  * @since 3.6
  */
-public class ConsumerRegistry<ET, D extends Destination<ET>> extends
-    AbstractConverterFactoryRegistry<Class<?>, ET, CellValueConsumerFactory<D, ?, ET, ?>, ConsumerRegistry<ET, D>> {
+public class ConsumerRegistry<DT> extends AbstractConverterFactoryRegistry<DT, CellValueConsumerFactory<?, ?, DT, ?>> {
 
-    /**
-     * Constructor
-     */
-    protected ConsumerRegistry() {
-    }
+    /** Constructor */
+    protected ConsumerRegistry() {}
 
     /**
      * Set parent destination type.

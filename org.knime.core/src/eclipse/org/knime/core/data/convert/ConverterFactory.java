@@ -106,6 +106,8 @@ public interface ConverterFactory<ST, DT> {
      */
     public String getIdentifier();
 
+    // TODO: add versioning. Check how we did this in knime-tensorprocessing.
+
     /**
      * Called when this factory is being serialized.
      *

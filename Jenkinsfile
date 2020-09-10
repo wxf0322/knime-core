@@ -1,7 +1,7 @@
 #!groovy
 def BN = BRANCH_NAME == "master" || BRANCH_NAME.startsWith("releases/") ? BRANCH_NAME : "master"
 
-library "knime-pipeline@$BN"
+library "knime-pipeline@todo/DEVOPS-502-fix-coverage-collection"
 
 properties([
 	pipelineTriggers([upstream(

@@ -176,6 +176,11 @@ public abstract class NodeContainer implements NodeProgressListener, NodeContain
     private ChangesTracker m_changesTracker;
 
     /**
+     * @since 4.3
+     */
+    protected DependentNodeProperties m_dependentNodeProperties = null;
+
+    /**
      * semaphore to make sure never try to work on inconsistent internal node
      * states. This semaphore will be used by a node alone to synchronize
      * internal changes of status etc.
@@ -401,7 +406,26 @@ public abstract class NodeContainer implements NodeProgressListener, NodeContain
      * @noreference This method is not intended to be referenced by clients.
      */
     public Optional<TrackedChanges> getTrackedChanges() {
-        return getChangesTracker().map(ct -> ct.getTrackedChanges());
+        return getChangesTracker().map(ChangesTracker::getTrackedChanges);
+    }
+
+    /**
+     * @return the {@link DependentNodeProperties} object, never <code>null</code>
+     */
+    DependentNodeProperties getDependentNodeProperties() {
+        if (m_dependentNodeProperties == null) {
+            m_dependentNodeProperties = new DependentNodeProperties();
+        }
+        return m_dependentNodeProperties;
+    }
+
+    /**
+     * For testing purposes only!
+     *
+     * @param p the {@link DependentNodeProperties} object to set
+     */
+    void setDependentNodeProperties(final DependentNodeProperties p) {
+        m_dependentNodeProperties = p;
     }
 
     public boolean addNodePropertyChangedListener(
@@ -895,10 +919,13 @@ public abstract class NodeContainer implements NodeProgressListener, NodeContain
      * @param e the new state change event
      */
     protected void notifyStateChangeListeners(final NodeStateEvent e) {
+        if (m_dependentNodeProperties != null) {
+            m_dependentNodeProperties.invalidate();
+        }
         for (NodeStateChangeListener l : m_stateChangeListeners) {
             l.stateChanged(e);
         }
-        findChangesTracker().ifPresent(ct -> ct.nodeStateChange());
+        findChangesTracker().ifPresent(ChangesTracker::nodeStateChange);
     }
 
     /** {@inheritDoc} */

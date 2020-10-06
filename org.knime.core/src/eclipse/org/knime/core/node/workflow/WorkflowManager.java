@@ -4786,6 +4786,11 @@ public final class WorkflowManager extends NodeContainer
             // of its action buttons one last time
             return false;
         }
+
+        if (nc.m_dependentNodeProperties != null && nc.m_dependentNodeProperties.isValid()) {
+            return nc.m_dependentNodeProperties.hasExecutingSuccessors();
+        }
+
         // get all successors of the node, including the WFM itself
         // if there are outgoing connections:
         LinkedHashMap<NodeID, Set<Integer>> nodes = m_workflow.getBreadthFirstListOfNodeAndSuccessors(nodeID, false);
@@ -5178,6 +5183,44 @@ public final class WorkflowManager extends NodeContainer
     }
 
     /**
+     * This method serves to speed up the calls of the {@link #canExecuteNode(NodeID)} and {@link #canResetNode(NodeID)}
+     * methods, if intended to be called for many (usually all) nodes that are contained in this workflow.
+     *
+     * Explanation: The mentioned methods require to determine the 'executable predecessors' or 'executing successors'
+     * which is normally done every time they are called. However, if this method is used beforehand, the 'executable
+     * predecessors' and 'executing successors' are determined in one go for all nodes.
+     *
+     * Usage:
+     *
+     * <pre>
+     * try (lock = determineDependentNodeProperties()) {
+     *   for (NodeContainer nc : getNodeContainers()) {
+     *     ... canResetNode(nc.getID());
+     *     ... canExecuteNode(nc.getID());
+     *   }
+     * }
+     * </pre>
+     *
+     * If {@link #canExecuteNode(NodeID)} or {@link #canResetNode(NodeID)} is called after the returned
+     * {@link DependentNodePropertiesUpdateLock} is released (by closing it), the 'executable predecessors' or
+     * 'executing successors' determined again with every single call.
+     *
+     * @return a lock which prevents the dependent node properties to be invalidated until the lock is released. That
+     *         is, till the lock is released, the 'executable predecessors' nor the 'executing successors' are not
+     *         additionally again whenever required.
+     * @throws IllegalStateException thrown if this method is called while another process is currently locking it from
+     *             being updated
+     *
+     * @since 4.3
+     */
+    public DependentNodePropertiesUpdateLock determineDependentNodeProperties() {
+        if (getDependentNodeProperties().isLocked()) {
+            throw new IllegalStateException("Dependent node properties are locked from being updated");
+        }
+        return DependentNodeProperties.update(this);
+    }
+
+    /**
      * Test if any of the predecessors of the given node is executable (=configured).
      *
      * @param nodeID id of node
@@ -5188,11 +5231,18 @@ public final class WorkflowManager extends NodeContainer
         if (this.getID().equals(nodeID)) { // we are talking about this WFM
             return getParent().hasExecutablePredecessor(nodeID);
         }
-        if (m_workflow.getNode(nodeID) == null) {
+
+        NodeContainer nc = m_workflow.getNode(nodeID);
+        if (nc == null) {
             // node has disappeared. Fixes bug 4881: a editor of a deleted metanode updates the enable status
             // of its action buttons one last time
             return false;
         }
+
+        if (nc.m_dependentNodeProperties != null && nc.m_dependentNodeProperties.isValid()) {
+            return nc.m_dependentNodeProperties.hasExecutablePredecessors();
+        }
+
         // get all predeccessors of the node, including the WFM itself if there are  connections:
         Set<NodeID> nodes = m_workflow.getPredecessors(nodeID);
         for (NodeID id : nodes) {

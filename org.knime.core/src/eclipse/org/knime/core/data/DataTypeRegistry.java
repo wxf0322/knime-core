@@ -64,6 +64,9 @@ import org.eclipse.core.runtime.IExtensionPoint;
 import org.eclipse.core.runtime.IExtensionRegistry;
 import org.eclipse.core.runtime.Platform;
 import org.knime.core.data.filestore.FileStoreFactory;
+import org.knime.core.data.schema.ValueFactory;
+import org.knime.core.data.schema.access.ReadAccess;
+import org.knime.core.data.schema.access.WriteAccess;
 import org.knime.core.internal.SerializerMethodLoader;
 import org.knime.core.node.NodeLogger;
 import org.knime.core.node.util.CheckUtils;
@@ -305,6 +308,17 @@ public final class DataTypeRegistry {
         }
     }
 
+    private final Map<Class<? extends DataCell>, ValueFactory<? extends ReadAccess, ? extends WriteAccess>> m_cellClassToValueFactoryMap =
+        new ConcurrentHashMap<>();
+
+    public Optional<ValueFactory<? extends ReadAccess, ? extends WriteAccess>> getValueFactoryFor(final DataType type) {
+        Class<? extends DataType> cellClass = type.getClass();
+        if (cellClass == null) {
+            return Optional.empty();
+        }
+        if (m_cellClassToValueFactoryMap.)
+    }
+
     private <T extends DataCell> Optional<DataCellSerializer<T>>
         scanExtensionPointForSerializer(final String cellClassName) {
         // not found => scan extension point
@@ -378,5 +392,31 @@ public final class DataTypeRegistry {
                 collectValueInterfaces(c);
             }
         }
+    }
+
+    private static final class ValueFactoryCarrier {
+        private final ValueFactory<? extends ReadAccess, ? extends WriteAccess> m_valueFactory;
+
+        static final ValueFactoryCarrier NULL_CARRIER = new ValueFactoryCarrier(null);
+
+        private ValueFactoryCarrier(final ValueFactory<? extends ReadAccess, ? extends WriteAccess> valueFactory) {
+            m_valueFactory = valueFactory;
+        }
+
+        boolean isNullCarrier() {
+            return m_valueFactory == null;
+        }
+
+        /**
+         * @return the valueFactory
+         */
+        ValueFactory<? extends ReadAccess, ? extends WriteAccess> getValueFactory() {
+            return m_valueFactory;
+        }
+
+        static ValueFactoryCarrier of(final ValueFactory<? extends ReadAccess, ? extends WriteAccess> valueFactory) {
+            return new ValueFactoryCarrier(CheckUtils.checkArgumentNotNull(valueFactory, "argument must not be null"));
+        }
+
     }
 }

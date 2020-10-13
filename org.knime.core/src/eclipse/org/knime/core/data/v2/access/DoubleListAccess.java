@@ -42,72 +42,37 @@
  *  may freely choose the license terms applicable to such Node, including
  *  when such Node is propagated with or for interoperation with KNIME.
  * ---------------------------------------------------------------------
+ *
+ * History
+ *   Oct 9, 2020 (benjamin): created
  */
 package org.knime.core.data.v2.access;
 
-import org.knime.core.data.v2.access.BooleanAccess.BooleanAccessSpec;
-import org.knime.core.data.v2.access.ByteArrayAccess.ByteArrayAccessSpec;
-import org.knime.core.data.v2.access.DoubleAccess.DoubleAccessSpec;
-import org.knime.core.data.v2.access.DoubleAccess.DoubleReadAccess;
-import org.knime.core.data.v2.access.DoubleAccess.DoubleWriteAccess;
-import org.knime.core.data.v2.access.DoubleListAccess.DoubleListAccessSpec;
-import org.knime.core.data.v2.access.IntAccess.IntAccessSpec;
-import org.knime.core.data.v2.access.ListAccess.ListAccessSpec;
-import org.knime.core.data.v2.access.LongAccess.LongAccessSpec;
-import org.knime.core.data.v2.access.ObjectAccess.ObjectAccessSpec;
-import org.knime.core.data.v2.access.StructAccess.StructAccessSpec;
-import org.knime.core.data.v2.access.VoidAccess.VoidAccessSpec;
+import org.knime.core.data.v2.value.DoubleListValueFactory.DoubleListReadValue;
+import org.knime.core.data.v2.value.DoubleListValueFactory.DoubleListWriteValue;
 
-/**
- * Specification of a {@link ReadAccess} and {@link WriteAccess}. Provides all information about their configuration.
- * For example {@link DoubleAccessSpec} provides configuration for {@link DoubleReadAccess} and
- * {@link DoubleWriteAccess}.
- *
- *
- * @param <R> type of {@link ReadAccess} associated with the {@link AccessSpec}.
- * @param <W> type of {@link WriteAccess} associated with the {@link AccessSpec}.
- *
- * @author Christian Dietz, KNIME GmbH, Germany, Konstanz
- * @since 4.3
- *
- * @noextend This interface is not intended to be extended by clients.
- */
-public interface AccessSpec<R extends ReadAccess, W extends WriteAccess> { // NOSONAR
+public class DoubleListAccess {
 
-    /**
-     * @param <T> result of visit
-     * @param mapper to visit
-     * @return result of the visit.
-     */
-    <T> T accept(final AccessSpecMapper<T> mapper);
+    private DoubleListAccess() {
+    }
 
-    /**
-     * AccessSpecMapper implementation.
-     *
-     * @author Christian Dietz, KNIME GmbH, Konstanz
-     */
-    @SuppressWarnings("javadoc")
-    public static interface AccessSpecMapper<T> {
+    public static final class DoubleListAccessSpec implements AccessSpec<DoubleListReadAccess, DoubleListWriteAccess> {
 
-        // TODO(benjamin) remove final!!!
-        T visit(final BooleanAccessSpec spec);
+        public static final DoubleListAccessSpec INSTANCE = new DoubleListAccessSpec();
 
-        T visit(final DoubleAccessSpec spec);
+        private DoubleListAccessSpec() {
+            // TODO Auto-generated constructor stub
+        }
 
-        T visit(final ObjectAccessSpec<?> spec);
+        @Override
+        public <T> T accept(final AccessSpecMapper<T> mapper) {
+            return mapper.visit(this);
+        }
+    }
 
-        T visit(final IntAccessSpec spec);
+    public interface DoubleListReadAccess extends ReadAccess, DoubleListReadValue {
+    }
 
-        T visit(final LongAccessSpec spec);
-
-        T visit(final VoidAccessSpec spec);
-
-        T visit(final ByteArrayAccessSpec spec);
-
-        T visit(final StructAccessSpec spec);
-
-        T visit(final DoubleListAccessSpec doubleListAccessSpec);
-
-        T visit(final ListAccessSpec listAccessSpec);
+    public interface DoubleListWriteAccess extends WriteAccess, DoubleListWriteValue {
     }
 }

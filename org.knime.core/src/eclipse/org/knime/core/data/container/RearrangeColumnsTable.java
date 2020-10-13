@@ -398,7 +398,7 @@ public final class RearrangeColumnsTable implements KnowsRowCountTable {
         // the entire table (nothing is written anyway))
         if (newColCount > 0) {
             final DataContainer container =
-                Node.invokeCreateDataContainer(context, new DataTableSpec(newColSpecs), true, -1, false);
+                Node.invokeCreateDataContainer(context, new DataTableSpec(newColSpecs), true, -1, true);
             assert newColumnFactoryList.size() == newColCount;
             try {
                 if (workerCount <= 0) {

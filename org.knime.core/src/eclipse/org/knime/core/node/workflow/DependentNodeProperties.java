@@ -50,193 +50,157 @@ package org.knime.core.node.workflow;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
+ * TODO update
+ *
  * Represents node properties that depend on other nodes in the workflow graph (i.e. successors or predecessors). This
  * class helps to be able to calculate those properties in one go and caches them for subsequent usage until they are
  * invalidated.
  *
  * Dependent node properties are {@link #hasExecutablePredecessors()} and {@link #hasExecutingSuccessors()}.
  *
+ * TODO comment TEMPORARY!!
+ *
+ * @noreference This class is not intended to be referenced by clients.
+ *
  * @author Martin Horn, KNIME GmbH, Konstanz, Germany
  * @since 4.3
  */
-class DependentNodeProperties {
+public final class DependentNodeProperties {
+
+    // all nodes including the nc parent (metanode or component; unless this is the project workflow)
+    private final Map<NodeID, Properties> m_props = new HashMap<>();
+
+    private final Properties m_parentProps = new Properties(null);
+
+    private final WorkflowManager m_wfm;
 
     /**
-     * See {@link WorkflowManager#determineDependentNodeProperties()}.
-     *
      * @param wfm the 'dependent properties' of the nodes contained in the given workflow manager will be updated
-     * @return lock that prevent the properties from being invalidated until it is released (i.e. closed)
      */
-    static DependentNodePropertiesUpdateLock update(final WorkflowManager wfm) {
-        final DependentNodeProperties parentProp;
-        try (WorkflowLock lock = wfm.lock()) {
+    DependentNodeProperties(final WorkflowManager wfm) {
+        m_wfm = wfm;
+        m_props.put(wfm.getID(), m_parentProps);
+    }
 
-            // since the nodes in the given workflow are going to be set to valid after the update
-            // we need to make sure that the children of those in turn are still invalid
-            // (because they are not touched by this update)
-            for (NodeContainer nc : wfm.getNodeContainers()) {
-                WorkflowManager subWorkflow;
-                if (nc instanceof WorkflowManager) {
-                    subWorkflow = (WorkflowManager)nc;
-                } else if (nc instanceof SubNodeContainer) {
-                    subWorkflow = ((SubNodeContainer)nc).getWorkflowManager();
-                } else {
-                    subWorkflow = null;
-                }
-                if (subWorkflow != null && !subWorkflow.getDependentNodeProperties().isValid()) {
-                    subWorkflow.getNodeContainers().forEach(n -> n.getDependentNodeProperties().invalidate());
-                }
+    /**
+     * TODO
+     *
+     * @param id
+     * @return
+     */
+    public boolean canExecuteNode(final NodeID id) {
+        return m_wfm.canExecuteNode(id, i -> m_props.get(i).hasExecutablePredecessors());
+    }
+
+    /**
+     * TODO
+     *
+     * @param id
+     * @return
+     */
+    public boolean canResetNode(final NodeID id) {
+        return m_wfm.canResetNode(id, i -> m_props.get(i).hasExecutingSuccessors());
+    }
+
+    /**
+     * TODO
+     */
+    void update() {
+        try (WorkflowLock lock = m_wfm.lock()) {
+            boolean reset = initParentProperties(m_wfm);
+            Collection<NodeContainer> nodes = m_wfm.getNodeContainers();
+            reset |= initAndResetNodeProperties(nodes, m_props);
+            if (m_props.size() > nodes.size() + 1) {
+                removeSurplusNodes(m_wfm, m_props);
             }
 
-            parentProp = wfm.getDependentNodeProperties();
-            parentProp.lock();
-            propagateHasExecutablePredecessorsProperty(wfm);
-            propagateHasExecutingSuccessorsProperty(wfm);
-            parentProp.setValid();
-        }
-
-        return parentProp::unlockAndInvalidate;
-    }
-
-    private Boolean m_hasExecutablePredecessors = null;
-
-    private Boolean m_hasExecutingSuccessors = null;
-
-    private boolean m_isValid = false;
-
-    private boolean m_isLocked = false;
-
-    private DependentNodeProperties m_parent = null;
-
-    /**
-     * Invalidates the dependent properties of this node. If the dependent properties of one single node has been
-     * invalidated, the 'dependent properties' of all other nodes in the very same workflow are regarded as invalid, too
-     * (mediated by the parent workflow' node property object).
-     *
-     * Invalidation happens when one node changes its state.
-     *
-     * Method partly (i.e. the call to the parent's node properties) synchronized because called from
-     * {@link NodeContainer#notifyStateChangeListeners(NodeStateEvent)} which can be called from different threads.
-     */
-    void invalidate() {
-        if (m_isLocked || (m_parent != null && m_parent.m_isLocked)) {
-            return;
-        }
-        if (m_parent != null) {
-            synchronized (m_parent) {
-                if (m_parent.isValid()) {
-                    m_parent.invalidate();
-                }
+            if (reset) {
+                updateHasExecutablePredecessorsProperties();
+                updateHasExecutingSuccessorsProperties();
             }
         }
-        m_isValid = false;
-        m_hasExecutablePredecessors = null;
-        m_hasExecutingSuccessors = null;
     }
 
-    /**
-     * Tells whether the state of the 'dependent properties' of a node is valid and can be used. If <code>false</code>
-     * (i.e. not valid), subsequent calls of {@link #hasExecutablePredecessors()} or {@link #hasExecutingSuccessors()}
-     * will throw an exception.
-     *
-     * Method partly (i.e. the call to the parent's node properties) synchronized because called from
-     * {@link NodeContainer#notifyStateChangeListeners(NodeStateEvent)} which can be called from different threads.
-     *
-     * @return whether the states of this 'dependent properties' of a node are valid or not
-     */
-    boolean isValid() {
-        if (m_parent != null) {
-            synchronized (m_parent) {
-                if (!m_parent.isValid()) {
-                    return false;
-                }
+    private boolean initParentProperties(final WorkflowManager wfm) {
+        if (wfm.isProject() || wfm.isComponentProjectWFM()) {
+            m_parentProps.setValid();
+            return false;
+        }
+
+        NodeContainer parentNC = getParentNC(wfm);
+        boolean parentHasExecutablePredecessors = parentNC.getParent().hasExecutablePredecessor(parentNC.getID());
+        boolean parentHasExecutingSuccessors = parentNC.getParent().hasSuccessorInProgress(parentNC.getID());
+        boolean reset =
+            !m_parentProps.isValid() || parentHasExecutablePredecessors != m_parentProps.hasExecutablePredecessors()
+                || parentHasExecutingSuccessors != m_parentProps.hasExecutingSuccessors();
+        m_parentProps.setHasExecutablePredecessors(parentHasExecutablePredecessors);
+        m_parentProps.setHasExecutingSuccessors(parentHasExecutingSuccessors);
+        if (reset) {
+            m_parentProps.invalidate(null);
+        }
+        return reset;
+    }
+
+    private static NodeContainer getParentNC(final WorkflowManager wfm) {
+        if (isComponentWFM(wfm)) {
+            return (SubNodeContainer)wfm.getDirectNCParent();
+        } else {
+            return wfm;
+        }
+    }
+
+    private static boolean isComponentWFM(final WorkflowManager wfm) {
+        return wfm.getDirectNCParent() instanceof SubNodeContainer;
+    }
+
+    private static boolean initAndResetNodeProperties(final Collection<NodeContainer> nodes,
+        final Map<NodeID, Properties> props) {
+        boolean reset = false;
+        for (NodeContainer nc : nodes) {
+            NodeID id = nc.getID();
+            Properties p = props.get(id);
+            NodeContainerState s = nc.getNodeContainerState();
+            if (p == null) {
+                p = new Properties(s);
+                props.put(id, p);
+                reset = true;
+            } else if (p.getNodeState() != s) {
+                p.invalidate(s);
+                reset = true;
+            } else {
+                p.setValid();
             }
         }
-        return m_isValid;
+        return reset;
     }
 
-    /**
-     * Whether the 'dependent node properties' are locked from being updated.
-     *
-     * @return <code>true</code> if locked, otherwise <code>false</code>
-     */
-    boolean isLocked() {
-        if (m_parent != null && m_parent.m_isLocked) {
-            return true;
-        }
-        return m_isLocked;
+    private static void removeSurplusNodes(final WorkflowManager wfm, final Map<NodeID, Properties> props) {
+        props.entrySet().removeIf(e -> !wfm.containsNodeContainer(e.getKey()) && !e.getKey().equals(wfm.getID()));
     }
 
-    /**
-     * @return whether there are executable predecessors
-     * @throws IllegalStateException if this dependent property is not valid
-     */
-    boolean hasExecutablePredecessors() {
-        if (!isValid()) {
-            throw new IllegalStateException("Property not valid anymore");
-        }
-        return m_hasExecutablePredecessors;
-    }
-
-    /**
-     * @return whether there are executing successors
-     * @throws IllegalStateException if this dependent property is not valid
-     */
-    boolean hasExecutingSuccessors() {
-        if (!isValid()) {
-            throw new IllegalStateException("Property not valid anymore");
-        }
-        return m_hasExecutingSuccessors;
-
-    }
-
-    private static void propagateHasExecutablePredecessorsProperty(final WorkflowManager wfm) {
-        Property<NodeID> p = new HasExecutablePredecessorsProperty(wfm);
+    private void updateHasExecutablePredecessorsProperties() {
+        PropertyProxy<NodeID> p = new HasExecutablePredecessorsPropertyProxy();
         propagate(p, collectUnknownPropertiesToStartPropagation(p));
     }
 
-    private static void propagateHasExecutingSuccessorsProperty(final WorkflowManager wfm) {
-        Property<NodeID> p = new HasExecutingSuccessorsProperty(wfm);
+    private void updateHasExecutingSuccessorsProperties() {
+        PropertyProxy<NodeID> p = new HasExecutingSuccessorsPropertyProxy();
         propagate(p, collectUnknownPropertiesToStartPropagation(p));
     }
 
-    private void unlockAndInvalidate() {
-        if (m_parent != null) {
-            m_parent.unlockAndInvalidate();
-        }
-        m_isLocked = false;
-        m_isValid = false;
-    }
-
-    private void lock() {
-        if (m_parent != null) {
-            m_parent.lock();
-        }
-        m_isLocked = true;
-    }
-
-    private void setValid() {
-        if (m_parent != null) {
-            m_parent.setValid();
-        }
-        m_isValid = true;
-    }
-
-    /*
-     *  Collect all unknown properties (i.e. properties without a value set) that are
-     *  (i) independent (no dependees) and have a 'independent' property value set to 'true'
-     *  (ii) dependent and at least one dependee has a property value set to 'true'
-     */
-    private static <T> Queue<T> collectUnknownPropertiesToStartPropagation(final Property<T> a) {
+    private static <T> Queue<T> collectUnknownPropertiesToStartPropagation(final PropertyProxy<T> a) {
         Queue<T> queue = new LinkedList<>();
-        for (T t : a.listAll()) {
-            if (a.getPropertyValue(t) == null) {
+        for (T t : a.listAllIncludingParent()) {
+            if (!a.isValid(t)) {
                 // property value needs to be re-calculated
                 handleDirectDependees(a, queue, t);
             }
@@ -244,33 +208,36 @@ class DependentNodeProperties {
         return queue;
     }
 
-    private static <T> void handleDirectDependees(final Property<T> a, final Queue<T> queue, final T t) {
+    /*
+     *  Collect all unknown properties (i.e. properties without a value set) that are
+     *  (i) independent (no dependees) and have an 'independent' property value set to 'true'
+     *  (ii) dependent and at least one dependee has a property value set to 'true'
+     */
+    private static <T> void handleDirectDependees(final PropertyProxy<T> a, final Queue<T> queue, final T t) {
         Collection<T> directDependees = a.getDirectDependees(t);
         if (directDependees.isEmpty()) {
-            a.setPropertyValue(t, Boolean.FALSE);
             if (a.getIndependentPropertyValue(t)) {
                 queue.add(t);
             }
-        } else if (directDependees.stream().anyMatch(d -> Boolean.TRUE.equals(a.getPropertyValue(d)))) {
+        } else if (directDependees.stream().anyMatch(a::getPropertyValue)) {
             // if there is at least one dependee with an actual property value set to true
-            a.setPropertyValue(t, Boolean.TRUE);
+            a.setPropertyValue(t, true);
             queue.add(t);
         } else {
-            a.setPropertyValue(t, Boolean.FALSE);
+            a.setPropertyValue(t, false);
         }
     }
 
-    private static <T> void propagate(final Property<T> a, final Queue<T> queue) {
+    private static <T> void propagate(final PropertyProxy<T> a, final Queue<T> queue) {
         while (!queue.isEmpty()) {
             T next = queue.poll();
             Collection<T> directDependers = a.getDirectDependers(next);
             for (T depender : directDependers) {
-                Boolean val = a.getPropertyValue(depender);
-                if (Boolean.TRUE.equals(val)) {
+                if (a.getPropertyValue(depender)) {
                     // if property is already true, propagation can be stopped at this point
                     break;
                 } else {
-                    a.setPropertyValue(depender, Boolean.TRUE);
+                    a.setPropertyValue(depender, true);
                     // add depender to the queue to be further propagated
                     queue.add(depender);
                 }
@@ -278,173 +245,201 @@ class DependentNodeProperties {
         }
     }
 
-    private static void updateIsValidState(final DependentNodeProperties np) {
-        np.m_isValid = np.m_hasExecutablePredecessors != null && np.m_hasExecutingSuccessors != null;
-    }
+    private interface PropertyProxy<T> {
 
-    private static DependentNodeProperties getNodePropsForNode(final NodeID id, final WorkflowManager wfm) {
-        DependentNodeProperties p;
-        DependentNodeProperties parentProps = wfm.getDependentNodeProperties();
-        if (id.equals(wfm.getID())) {
-            p = parentProps;
-        } else {
-            p = wfm.getNodeContainer(id).getDependentNodeProperties();
-            p.m_parent = parentProps;
-        }
-        return p;
-    }
+        Collection<T> listAllIncludingParent();
 
-    private static Collection<NodeID> listNodesIdsIncludingParent(final WorkflowManager wfm) {
-        List<NodeID> res = wfm.getNodeContainers().stream().map(NodeContainer::getID).collect(Collectors.toList());
-        if (!wfm.isProject()) {
-            // also add this workflow
-            res.add(wfm.getID());
-        }
-        return res;
-    }
-
-    private interface Property<T> {
-
-        Collection<T> listAll();
-
-        Boolean getPropertyValue(T t);
+        boolean getPropertyValue(T t); // NOSONAR
 
         boolean getIndependentPropertyValue(T t); // NOSONAR
 
-        void setPropertyValue(T t, Boolean value);
+        void setPropertyValue(T t, boolean value);
 
         Collection<T> getDirectDependees(T t);
 
         Collection<T> getDirectDependers(T t);
+
+        boolean isValid(T t);
     }
 
-    private static final class HasExecutablePredecessorsProperty implements Property<NodeID> {
+    private abstract class AbstractPropertyProxy implements PropertyProxy<NodeID> {
 
-        private WorkflowManager m_wfm;
-
-        private HasExecutablePredecessorsProperty(final WorkflowManager wfm) {
-            assert wfm.getDependentNodeProperties() != null;
-            m_wfm = wfm;
+        @Override
+        public boolean isValid(final NodeID t) {
+            return m_props.get(t).isValid();
         }
 
         @Override
-        public Collection<NodeID> listAll() {
-            return listNodesIdsIncludingParent(m_wfm);
+        public Collection<NodeID> listAllIncludingParent() {
+            List<NodeID> res =
+                m_wfm.getNodeContainers().stream().map(NodeContainer::getID).collect(Collectors.toList());
+            if (!m_wfm.isProject() && !m_wfm.isComponentProjectWFM()) {
+                // also add this workflow
+                res.add(m_wfm.getID());
+            }
+            return res;
         }
 
+    }
+
+    private final class HasExecutablePredecessorsPropertyProxy extends AbstractPropertyProxy {
+
         @Override
-        public Boolean getPropertyValue(final NodeID t) {
-            return getNodePropsForNode(t, m_wfm).m_hasExecutablePredecessors;
+        public boolean getPropertyValue(final NodeID t) {
+            return m_props.get(t).hasExecutablePredecessors();
         }
 
         @Override
         public boolean getIndependentPropertyValue(final NodeID t) {
             if (t.equals(m_wfm.getID())) {
-                DependentNodeProperties p = m_wfm.getDependentNodeProperties();
-                if (p.m_hasExecutablePredecessors == null) {
-                    update(m_wfm.getParent());
-                }
-                return p.m_hasExecutablePredecessors;
+                return m_props.get(t).hasExecutablePredecessors();
             } else {
                 return isExecutable(m_wfm.getNodeContainer(t));
             }
         }
 
-        private static boolean isExecutable(final NodeContainer nc) {
+        private boolean isExecutable(final NodeContainer nc) {
             return nc.getNodeContainerState().isConfigured();
         }
 
         @Override
-        public void setPropertyValue(final NodeID t, final Boolean value) {
-            DependentNodeProperties p = getNodePropsForNode(t, m_wfm);
-            p.m_hasExecutablePredecessors = value;
-            updateIsValidState(p);
+        public void setPropertyValue(final NodeID t, final boolean value) {
+            if (!t.equals(m_wfm.getID())) {
+                m_props.get(t).setHasExecutablePredecessors(value);
+            }
         }
 
         @Override
         public Collection<NodeID> getDirectDependees(final NodeID t) {
-            if (t.equals(m_wfm.getID())) {
-                return Collections.emptyList();
-            }
-            // get all direct predecessors
-            return m_wfm.getIncomingConnectionsFor(t).stream().map(ConnectionContainer::getSource)
-                .collect(Collectors.toSet());
+            return getDirectPredecessors(t, m_wfm);
         }
 
         @Override
         public Collection<NodeID> getDirectDependers(final NodeID t) {
-            if (t.equals(m_wfm.getID())) {
-                return Collections.emptyList();
-            }
-            // get all direct successors
-            return m_wfm.getOutgoingConnectionsFor(t).stream().map(ConnectionContainer::getDest)
-                .collect(Collectors.toSet());
+            return getDirectSuccessors(t, m_wfm);
         }
     }
 
-    private static final class HasExecutingSuccessorsProperty implements Property<NodeID> {
-
-        private WorkflowManager m_wfm;
-
-        private HasExecutingSuccessorsProperty(final WorkflowManager wfm) {
-            assert wfm.getDependentNodeProperties() != null;
-            m_wfm = wfm;
-        }
+    private final class HasExecutingSuccessorsPropertyProxy extends AbstractPropertyProxy {
 
         @Override
-        public Collection<NodeID> listAll() {
-            return listNodesIdsIncludingParent(m_wfm);
-        }
-
-        @Override
-        public Boolean getPropertyValue(final NodeID t) {
-            return getNodePropsForNode(t, m_wfm).m_hasExecutingSuccessors;
+        public boolean getPropertyValue(final NodeID t) {
+            return m_props.get(t).hasExecutingSuccessors();
         }
 
         @Override
         public boolean getIndependentPropertyValue(final NodeID t) {
             if (t.equals(m_wfm.getID())) {
-                DependentNodeProperties p = m_wfm.getDependentNodeProperties();
-                if (p.m_hasExecutingSuccessors == null) {
-                    update(m_wfm.getParent());
-                }
-                return p.m_hasExecutingSuccessors;
+                return m_props.get(t).hasExecutingSuccessors();
             } else {
-                return isExecuting(m_wfm.getNodeContainer(t));
+                return isExecuting(m_wfm.getNodeContainer(t).getNodeContainerState());
             }
         }
 
-        private static boolean isExecuting(final NodeContainer nc) {
-            return nc.getNodeContainerState().isExecutionInProgress()
-                || nc.getNodeContainerState().isExecutingRemotely();
+        private boolean isExecuting(final NodeContainerState s) {
+            return (s.isExecutionInProgress() && !s.isWaitingToBeExecuted()) || s.isExecutingRemotely();
         }
 
         @Override
-        public void setPropertyValue(final NodeID t, final Boolean value) {
-            DependentNodeProperties p = getNodePropsForNode(t, m_wfm);
-            p.m_hasExecutingSuccessors = value;
-            updateIsValidState(p);
+        public void setPropertyValue(final NodeID t, final boolean value) {
+            if (!t.equals(m_wfm.getID())) {
+                m_props.get(t).setHasExecutingSuccessors(value);
+            }
         }
 
         @Override
         public Collection<NodeID> getDirectDependees(final NodeID t) {
-            if (t.equals(m_wfm.getID())) {
-                return Collections.emptyList();
-            }
-            // get all direct successors
-            return m_wfm.getOutgoingConnectionsFor(t).stream().map(ConnectionContainer::getDest)
-                .collect(Collectors.toSet());
-
+            return getDirectSuccessors(t, m_wfm);
         }
 
         @Override
         public Collection<NodeID> getDirectDependers(final NodeID t) {
-            if (t.equals(m_wfm.getID())) {
-                return Collections.emptyList();
-            }
-            // get all direct predecessors
-            return m_wfm.getIncomingConnectionsFor(t).stream().map(ConnectionContainer::getSource)
-                .collect(Collectors.toSet());
+            return getDirectPredecessors(t, m_wfm);
+        }
+    }
+
+    private static Collection<NodeID> getDirectPredecessors(final NodeID t, final WorkflowManager wfm) {
+        if (!wfm.containsNodeContainer(t)) {
+            return Collections.emptyList();
+        }
+        return wfm.getIncomingConnectionsFor(t).stream().map(ConnectionContainer::getSource)
+            .collect(Collectors.toSet());
+
+    }
+
+    private static Collection<NodeID> getDirectSuccessors(final NodeID t, final WorkflowManager wfm) {
+        TODO
+        parents are a dependees/dependers in one direction!!
+
+        if (!wfm.containsNodeContainer(t)) {
+            return Collections.emptyList();
+        }
+        Set<NodeID> successors =
+            wfm.getOutgoingConnectionsFor(t).stream().map(ConnectionContainer::getDest).collect(Collectors.toSet());
+        if (successors.isEmpty() && isComponentOutput(t, wfm)) {
+            return Collections.singleton(wfm.getID());
+        }
+        return successors;
+    }
+
+    private static boolean isComponentOutput(final NodeID id, final WorkflowManager wfm) {
+        SubNodeContainer snc = getParentComponent(wfm);
+        return snc != null && snc.getVirtualOutNodeID().equals(id);
+    }
+
+    private static SubNodeContainer getParentComponent(final WorkflowManager wfm) {
+        if (wfm.getDirectNCParent() instanceof SubNodeContainer && !wfm.isComponentProjectWFM()) {
+            return (SubNodeContainer)wfm.getDirectNCParent();
+        } else {
+            return null;
+        }
+    }
+
+    private static class Properties {
+
+        private boolean m_hasExecutablePredecessors = false;
+
+        private boolean m_hasExecutingSuccessors = false;
+
+        private NodeContainerState m_nodeState = null;
+
+        private boolean m_valid = false;
+
+        Properties(final NodeContainerState s) {
+            m_nodeState = s;
+        }
+
+        void invalidate(final NodeContainerState s) {
+            m_nodeState = s;
+            m_valid = false;
+        }
+
+        void setValid() {
+            m_valid = true;
+        }
+
+        boolean isValid() {
+            return m_valid;
+        }
+
+        boolean hasExecutablePredecessors() {
+            return m_hasExecutablePredecessors;
+        }
+
+        boolean hasExecutingSuccessors() {
+            return m_hasExecutingSuccessors;
+        }
+
+        void setHasExecutablePredecessors(final boolean b) {
+            m_hasExecutablePredecessors = b;
+        }
+
+        void setHasExecutingSuccessors(final boolean b) {
+            m_hasExecutingSuccessors = b;
+        }
+
+        NodeContainerState getNodeState() {
+            return m_nodeState;
         }
     }
 

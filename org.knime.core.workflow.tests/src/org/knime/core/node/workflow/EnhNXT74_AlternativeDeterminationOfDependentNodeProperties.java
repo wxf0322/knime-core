@@ -47,8 +47,6 @@ package org.knime.core.node.workflow;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.List;
@@ -80,13 +78,19 @@ public class EnhNXT74_AlternativeDeterminationOfDependentNodeProperties extends 
 		loadAndSetWorkflow();
 		WorkflowManager wfm = getManager();
 		NodeID parentId = wfm.getID();
-		WorkflowManager metanode = (WorkflowManager) wfm.getNodeContainer(parentId.createChild(209));
-		WorkflowManager componentWfm = ((SubNodeContainer) wfm.getNodeContainer(parentId.createChild(212)))
+		WorkflowManager metanode_209 = (WorkflowManager) wfm.getNodeContainer(parentId.createChild(209));
+		WorkflowManager component_214 = ((SubNodeContainer) wfm.getNodeContainer(parentId.createChild(214)))
+				.getWorkflowManager();
+		WorkflowManager component_215 = ((SubNodeContainer) wfm.getNodeContainer(parentId.createChild(215)))
+				.getWorkflowManager();
+		WorkflowManager component_212 = ((SubNodeContainer) wfm.getNodeContainer(parentId.createChild(212)))
 				.getWorkflowManager();
 
 		checkCanExecuteAndCanResetFlagsForAllNodes(wfm);
-		checkCanExecuteAndCanResetFlagsForAllNodes(metanode);
-		checkCanExecuteAndCanResetFlagsForAllNodes(componentWfm);
+		checkCanExecuteAndCanResetFlagsForAllNodes(metanode_209);
+		checkCanExecuteAndCanResetFlagsForAllNodes(component_214);
+		checkCanExecuteAndCanResetFlagsForAllNodes(component_215);
+		checkCanExecuteAndCanResetFlagsForAllNodes(component_212);
 
 		// execute 'Wait ...' nodes
 		wfm.executeUpToHere(parentId.createChild(203), parentId.createChild(195));
@@ -94,116 +98,39 @@ public class EnhNXT74_AlternativeDeterminationOfDependentNodeProperties extends 
 			assertTrue(wfm.getNodeContainerState().isExecutionInProgress());
 		});
 		checkCanExecuteAndCanResetFlagsForAllNodes(wfm);
-		checkCanExecuteAndCanResetFlagsForAllNodes(metanode);
+		checkCanExecuteAndCanResetFlagsForAllNodes(metanode_209);
 
 		// add a connection within the component to make sure that the
 		// 'hasExecutablePredeccessor' property
 		// of the contained nodes changes
-		componentWfm.addConnection(componentWfm.getID().createChild(212), 1, componentWfm.getID().createChild(214), 1);
-		checkCanExecuteAndCanResetFlagsForAllNodes(componentWfm);
+		component_212.addConnection(component_212.getID().createChild(212), 1, component_212.getID().createChild(214),
+				1);
+		checkCanExecuteAndCanResetFlagsForAllNodes(component_212);
 
 		wfm.cancelExecution();
 	}
 
-	/**
-	 * Makes sure that the 'dependent node properties' are not invalidated while the
-	 * respective {@link DependentNodePropertiesUpdateLock} is set.
-	 * 
-	 * @throws Exception
-	 */
-	@Test
-	public void testNodeStateChangeWhileUpdateOfDependentNodePropertiesIsLocked() throws Exception {
-		loadAndSetWorkflow();
-		WorkflowManager wfm = getManager();
-		try (DependentNodePropertiesUpdateLock lock = wfm.determineDependentNodeProperties()) {
-			assertTrue("dependent node properties of workflow expected to be valid",
-					wfm.getDependentNodeProperties().isValid());
-			wfm.canExecuteNode(wfm.getID().createChild(210));
-			assertTrue("dependent node properties of workflow expected to be still valid",
-					wfm.getDependentNodeProperties().isValid());
-		}
-		assertFalse("dependent node properties of workflow not expected to be valid anymore",
-				wfm.getDependentNodeProperties().isValid());
-	}
-
 	private void checkCanExecuteAndCanResetFlagsForAllNodes(WorkflowManager wfm) {
-		assertFalse("dependent node properties are not valid", wfm.getDependentNodeProperties().isValid());
-
 		List<NodeID> nodes = getNodeIds(wfm);
 
 		List<Boolean> canExecute = nodes.stream().map(wfm::canExecuteNode).collect(Collectors.toList());
 		List<Boolean> canReset = nodes.stream().map(wfm::canResetNode).collect(Collectors.toList());
 
-		try (DependentNodePropertiesUpdateLock lock = wfm.determineDependentNodeProperties()) {
-			assertNotNull("node properties must not be null", wfm.getDependentNodeProperties());
-			assertTrue("dependent node properties expected to be valid", wfm.getDependentNodeProperties().isValid());
+		DependentNodeProperties props = wfm.determineDependentNodeProperties();
 
-			for (int i = 0; i < nodes.size(); i++) {
-				NodeID id = nodes.get(i);
-				NodeContainer nc = wfm.getNodeContainer(id);
-
-				assertTrue("dependent node properties expected to be valid", nc.getDependentNodeProperties().isValid());
-				assertThat("'canExecute' flag differs", wfm.canExecuteNode(id), is(canExecute.get(i)));
-				assertThat("'canReset' flag differs", wfm.canResetNode(id), is(canReset.get(i)));
-
-				assertThatTheRightMethodsHaveBeenCalled(wfm, id, nc);
-			}
+		for (int i = 0; i < nodes.size(); i++) {
+			NodeID id = nodes.get(i);
+			assertThat("'canExecute' flag differs for node " + id, props.canExecuteNode(id), is(canExecute.get(i)));
+			assertThat("'canReset' flag differs for node " + id, props.canResetNode(id), is(canReset.get(i)));
 		}
-		assertFalse("dependent node properties are not expected to be valid",
-				wfm.getDependentNodeProperties().isValid());
-		assertFalse("dependent node properties are not expected to be locked anymore",
-				wfm.getDependentNodeProperties().isLocked());
 	}
 
-	private void assertThatTheRightMethodsHaveBeenCalled(WorkflowManager wfm, NodeID id, NodeContainer nc) {
-		DependentNodeProperties dnp = nc.getDependentNodeProperties();
-		DependentNodePropertiesForTesting test = new DependentNodePropertiesForTesting();
-		nc.setDependentNodeProperties(test);
-
-		wfm.canExecuteNode(id);
-		wfm.canResetNode(id);
-
-		// make sure that the node properties have been used for real (by checking that
-		// the respective methods have been called)
-		assertThat(test.m_hasExecutablePredecessorsMethodCalls, is(wfm.canExecuteNodeDirectly(id) ? 0 : 1));
-		assertThat(test.m_hasExecutingSuccessorsMethodCalls, is(nc.canPerformReset() ? 1 : 0));
-
-		test.m_isValid = false;
-		test.m_hasExecutablePredecessorsMethodCalls = 0;
-		test.m_hasExecutingSuccessorsMethodCalls = 0;
-		assertThat(test.m_hasExecutablePredecessorsMethodCalls, is(0));
-		assertThat(test.m_hasExecutingSuccessorsMethodCalls, is(0));
-
-		nc.setDependentNodeProperties(dnp);
+	@Test
+	public void testNoUpdatePerformedIfNoNodeStateChanged() {
+		// TODO
 	}
 
 	private static List<NodeID> getNodeIds(WorkflowManager wfm) {
 		return wfm.getNodeContainers().stream().map(nc -> nc.getID()).collect(Collectors.toList());
-	}
-
-	private static class DependentNodePropertiesForTesting extends DependentNodeProperties {
-
-		private int m_hasExecutablePredecessorsMethodCalls = 0;
-		private int m_hasExecutingSuccessorsMethodCalls = 0;
-
-		private boolean m_isValid = true;
-
-		@Override
-		boolean isValid() {
-			return m_isValid;
-		}
-
-		@Override
-		boolean hasExecutablePredecessors() {
-			m_hasExecutablePredecessorsMethodCalls++;
-			return true;
-		}
-
-		@Override
-		boolean hasExecutingSuccessors() {
-			m_hasExecutingSuccessorsMethodCalls++;
-			return true;
-		}
-
 	}
 }

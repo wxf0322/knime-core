@@ -4725,6 +4725,10 @@ public final class WorkflowManager extends NodeContainer
      * @return true if the node can safely be reset.
      */
     public boolean canResetNode(final NodeID nodeID) {
+        return canResetNode(nodeID, this::hasSuccessorInProgress);
+    }
+
+    boolean canResetNode(final NodeID nodeID, final Predicate<NodeID> hasSuccessorsInProgress) {
         try (WorkflowLock lock = lock()) {
             NodeContainer nc = m_workflow.getNode(nodeID);
             if (nc == null) {
@@ -4733,7 +4737,7 @@ public final class WorkflowManager extends NodeContainer
             // (a) this node is resetable
             // (b) no successors is running or queued.
             // (c) not contained in a sub node that has executing successors
-            return nc.canPerformReset() && !hasSuccessorInProgress(nodeID) && canResetContainedNodes();
+            return nc.canPerformReset() && !hasSuccessorsInProgress.test(nodeID) && canResetContainedNodes();
         }
     }
 
@@ -4786,11 +4790,6 @@ public final class WorkflowManager extends NodeContainer
             // of its action buttons one last time
             return false;
         }
-
-        if (nc.m_dependentNodeProperties != null && nc.m_dependentNodeProperties.isValid()) {
-            return nc.m_dependentNodeProperties.hasExecutingSuccessors();
-        }
-
         // get all successors of the node, including the WFM itself
         // if there are outgoing connections:
         LinkedHashMap<NodeID, Set<Integer>> nodes = m_workflow.getBreadthFirstListOfNodeAndSuccessors(nodeID, false);
@@ -5168,6 +5167,10 @@ public final class WorkflowManager extends NodeContainer
      * @return true if node can be executed.
      */
     public boolean canExecuteNode(final NodeID nodeID) {
+        return canExecuteNode(nodeID, this::hasExecutablePredecessor);
+    }
+
+    boolean canExecuteNode(final NodeID nodeID, final Predicate<NodeID> hasExecutablePredecessors) {
         try (WorkflowLock lock = lock()) {
             NodeContainer nc = m_workflow.getNode(nodeID);
             if (nc == null) {
@@ -5178,9 +5181,11 @@ public final class WorkflowManager extends NodeContainer
                 return true;
             }
             // check predecessors:
-            return hasExecutablePredecessor(nodeID);
+            return hasExecutablePredecessors.test(nodeID);
         }
     }
+
+    private DependentNodeProperties m_dependentNodeProperties = null;
 
     /**
      * This method serves to speed up the calls of the {@link #canExecuteNode(NodeID)} and {@link #canResetNode(NodeID)}
@@ -5194,11 +5199,13 @@ public final class WorkflowManager extends NodeContainer
      *
      * <pre>
      * try (lock = determineDependentNodeProperties()) {
+     *
      *   for (NodeContainer nc : getNodeContainers()) {
      *     ... canResetNode(nc.getID());
      *     ... canExecuteNode(nc.getID());
      *   }
      * }
+     *
      * </pre>
      *
      * If {@link #canExecuteNode(NodeID)} or {@link #canResetNode(NodeID)} is called after the returned
@@ -5211,13 +5218,16 @@ public final class WorkflowManager extends NodeContainer
      * @throws IllegalStateException thrown if this method is called while another process is currently locking it from
      *             being updated
      *
+     * @noreference This method is not intended to be referenced by clients.
+     *
      * @since 4.3
      */
-    public DependentNodePropertiesUpdateLock determineDependentNodeProperties() {
-        if (getDependentNodeProperties().isLocked()) {
-            throw new IllegalStateException("Dependent node properties are locked from being updated");
+    public DependentNodeProperties determineDependentNodeProperties() {
+        if (m_dependentNodeProperties == null) {
+            m_dependentNodeProperties = new DependentNodeProperties(this);
         }
-        return DependentNodeProperties.update(this);
+        m_dependentNodeProperties.update();
+        return m_dependentNodeProperties;
     }
 
     /**
@@ -5226,23 +5236,16 @@ public final class WorkflowManager extends NodeContainer
      * @param nodeID id of node
      * @return true if at least one predecessor can be executed.
      */
-    private boolean hasExecutablePredecessor(final NodeID nodeID) {
+    boolean hasExecutablePredecessor(final NodeID nodeID) {
         assert m_workflowLock.isHeldByCurrentThread();
         if (this.getID().equals(nodeID)) { // we are talking about this WFM
             return getParent().hasExecutablePredecessor(nodeID);
         }
-
-        NodeContainer nc = m_workflow.getNode(nodeID);
-        if (nc == null) {
+        if (m_workflow.getNode(nodeID) == null) {
             // node has disappeared. Fixes bug 4881: a editor of a deleted metanode updates the enable status
             // of its action buttons one last time
             return false;
         }
-
-        if (nc.m_dependentNodeProperties != null && nc.m_dependentNodeProperties.isValid()) {
-            return nc.m_dependentNodeProperties.hasExecutablePredecessors();
-        }
-
         // get all predeccessors of the node, including the WFM itself if there are  connections:
         Set<NodeID> nodes = m_workflow.getPredecessors(nodeID);
         for (NodeID id : nodes) {
